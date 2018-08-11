@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:jpa="http://www.springframework.org/schema/data/jpa"
+	xmlns:task="http://www.springframework.org/schema/task"
+	xmlns:amq="http://activemq.apache.org/schema/core"
+	xmlns:jms="http://www.springframework.org/schema/jms"
+	xsi:schemaLocation="
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.1.xsd
+		http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.1.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.1.xsd
+		http://www.springframework.org/schema/jdbc http://www.springframework.org/schema/jdbc/spring-jdbc-4.1.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.1.xsd
+		http://www.springframework.org/schema/data/jpa 
+		http://www.springframework.org/schema/data/jpa/spring-jpa.xsd
+		http://www.springframework.org/schema/jms
+        http://www.springframework.org/schema/jms/spring-jms.xsd
+		http://activemq.apache.org/schema/core
+        http://activemq.apache.org/schema/core/activemq-core-5.8.0.xsd ">
+
+
+	<!-- 扫描 @Server @Controller @Repository -->
+	<context:component-scan base-package="cn" />
+
+
+	<!-- ActiveMQ 连接工厂 -->
+	<!-- 真正可以产生Connection的ConnectionFactory，由对应的 JMS服务厂商提供 -->
+	<!-- 如果连接网络：tcp://ip:61616；未连接网络：tcp://localhost:61616 以及用户名，密码 -->
+	<amq:connectionFactory id="amqConnectionFactory"
+		brokerURL="tcp://localhost:61616" userName="admin" password="admin" />
+
+	<!-- Spring Caching连接工厂 -->
+	<!-- Spring用于管理真正的ConnectionFactory的ConnectionFactory -->
+	<bean id="mqConnectionFactory"
+		class="org.springframework.jms.connection.CachingConnectionFactory">
+		<!-- 目标ConnectionFactory对应真实的可以产生JMS Connection的ConnectionFactory -->
+		<property name="targetConnectionFactory"
+			ref="amqConnectionFactory"></property>
+		<!-- 同上，同理 -->
+		<!-- <constructor-arg ref="amqConnectionFactory" /> -->
+		<!-- Session缓存数量 -->
+		<property name="sessionCacheSize" value="100" />
+	</bean>
+
+	<!-- Spring JmsTemplate 的消息生产者 start -->
+
+	<!-- 定义JmsTemplate的Queue类型 -->
+	<bean id="jmsQueueTemplate"
+		class="org.springframework.jms.core.JmsTemplate">
+		<!-- 这个connectionFactory对应的是我们定义的Spring提供的那个ConnectionFactory对象 -->
+		<constructor-arg ref="mqConnectionFactory" />
+		<!-- 非pub/sub模型（发布/订阅），即队列模式 -->
+		<property name="pubSubDomain" value="false" />
+	</bean>
+
+	<!-- 定义JmsTemplate的Topic类型 -->
+	<bean id="jmsTopicTemplate"
+		class="org.springframework.jms.core.JmsTemplate">
+		<!-- 这个connectionFactory对应的是我们定义的Spring提供的那个ConnectionFactory对象 -->
+		<constructor-arg ref="mqConnectionFactory" />
+		<!-- pub/sub模型（发布/订阅） -->
+		<property name="pubSubDomain" value="true" />
+	</bean>
+
+	<!--Spring JmsTemplate 的消息生产者 end -->
+	<!-- 消息消费者使用spring的监听 -->
+	<!-- 定义Queue -->
+	<jms:listener-container destination-type="queue"
+		connection-factory="mqConnectionFactory" container-type="default"
+		acknowledge="auto">
+		<!-- 添加自己写的监听器,会自动运行监听器中的方法来处理数据 -->
+		<!-- 两个参数,1监听的数据集名字,哪个监听类进行处理监听 -->
+		<!-- 要注意的在spring中通过注解自动初始化的bean对象,如果没写别名,那就是类名的首字母小写 -->
+		<jms:listener destination="a" ref="queueConsumer2" />
+		<jms:listener destination="a" ref="queueConsumer1" />
+	</jms:listener-container>
+	<!-- 配置Topics的监听器 -->
+	<!-- 在定义第一层参数有4个,1,是获取那种类型的队列数据,2.与ActiceMQ的应答模式是那种
+	3.该监听容器是什么类型的,一般都是默认类型,4.该容器是通过哪个被spring管理的连接工厂获取连接的
+	声明这些之后,就可以添加监视器了,注意该监视器只要实现MessageListener接口就可以了,
+	在该接口的实现类中的实现方法就可以添加你要执行方法和操作了,然后当监视器监视获取到新的
+	数据的时候会自动处理和工作了 -->
+	<jms:listener-container destination-type="topic"
+		acknowledge="auto" container-type="default"
+		connection-factory="mqConnectionFactory">
+		<jms:listener destination="b" ref="topicsConusmer1"/>
+		<jms:listener destination="b" ref="topicsConusmer2"/>
+	</jms:listener-container>
+
+
+</beans>
